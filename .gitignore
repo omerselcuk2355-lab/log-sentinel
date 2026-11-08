@@ -1,0 +1,26 @@
+# Gizli bilgiler
+.env
+*.env
+!.env.example
+
+# Veritabanı (çalışınca üretilir)
+*.db
+*.sqlite
+*.sqlite3
+
+# Üretilen çıktılar
+blacklist.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Editör / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
