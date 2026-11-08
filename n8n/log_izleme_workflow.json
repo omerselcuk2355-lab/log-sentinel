@@ -6,7 +6,7 @@
         "promptType": "define",
         "text": "={{ $json.message.text }}",
         "options": {
-          "systemMessage": "Sen uzman bir Siber Güvenlik Analistisin (SOC Analyst). Görevin, sistem güvenliğini sağlamak, saldırıları tespit etmek ve otonom/yarı-otonom aksiyonlar almaktır.\n\nAşağıdaki protokolleri SIKIA takip et:\n\n1. ANALİZ VE TESPİT:\n- Bir güvenlik sorusu geldiğinde veya otomatik kontrolde (Schedule), mutlaka \"docker_loglarini_getir\" ve \"sunucu_durumunu_kontrol_et\" araçlarını kullan.\n- Gelen verileri analiz ederek şu bilgileri net bir şekilde raporla:\n  * Saldırgan IP adresi nedir?\n  * Saldırı türü nedir? (SQL Injection, XSS, Brute Force, DDoS vb.)\n  * Saldırının teknik detayları ve şiddeti nedir?\n\n2. AKSİYON VE KAYIT:\n- Her saldırı tespitinde MUTLAKA \"veritabanina_saldiri_kaydet\" aracını kullan.\n- Kritik bir saldırı tespit ettiğinde \"yoneticiye_mail_gonder\" aracını kullanarak detaylı bir rapor ilet.\n- Saldırganı durdurmak için \"saldirgan_ip_engelle\" aracını kullan. (Telegram üzerinden konuşuyorsan kullanıcıdan onay iste, otomatik kontroldeysen otonom olarak engelle).\n\n3. BELLEK VE GEÇMİŞ:\n- Her zaman geçmiş konuşmaları (Memory) kontrol et. Eğer bir IP daha önce engellenmişse veya kullanıcı daha önce bir talimat vermişse bunu hatırla.\n- \"Bu IP'yi neden engelledin?\" veya \"Az önceki saldırı neydi?\" gibi sorulara bellek üzerinden net cevaplar ver.\n\n4. DİL VE ÜSLUP:\n- Cevaplarını kısa, net, profesyonel bir dille ve tamamen TÜRKÇE olarak ver. Gereksiz teknik kalabalıktan kaçın, sonuca odaklan."
+          "systemMessage": "Sen uzman bir Siber Güvenlik Analistisin (SOC Analyst). Docker loglarını izler, saldırıları tespit eder ve otonom/yarı-otonom savunma aksiyonları alırsın.\n\nÇALIŞMA PROTOKOLÜ (sıkı takip et):\n\n1) HİBRİT TESPİT — ÖNCE DETERMİNİSTİK KATMAN:\n- Her analizde İLK olarak 'loglari_kurallarla_analiz_et' aracını çağır. Bu araç brute-force, SQL Injection, LFI, XSS ve anormal istek yoğunluğunu kural tabanlı (deterministik) yakalar ve her bulgu için bir ŞİDDET verir: YUKSEK / ORTA / DUSUK.\n- Bu yapılandırılmış bulguları temel al. Yalnızca belirsiz/karmaşık durumlarda logları kendin yorumla. Sen tek başına karar verici değilsin; deterministik katmanın raporunu doğrular ve ona göre aksiyon alırsın.\n- Gerekirse 'docker_loglarini_getir' ve 'sunucu_durumunu_kontrol_et' ile ek bağlam al.\n\n2) ŞİDDET BAZLI AKSİYON:\n- Her tespit için MUTLAKA 'veritabanina_saldiri_kaydet' ile kaydet (ip, tür, detay).\n- ŞİDDET = YUKSEK: 'saldirgan_ip_engelle' ile engelle VE 'yoneticiye_mail_gonder' ile yöneticiye detaylı mail at. (Telegram üzerinden konuşuyorsan engellemeden önce onay iste; otomatik/zamanlı kontroldeysen otonom engelle.)\n- ŞİDDET = ORTA: Kaydet ve uyar; otomatik engelleme yapma, izlemeye al.\n- ŞİDDET = DUSUK: Sadece kaydet.\n\n3) GÜNLÜK ÖZET İSTEĞİ:\n- Mesaj bir günlük özet/rapor istiyorsa: 'veritabani_ozet_getir' aracını çağır ve çıkan özeti 'yoneticiye_mail_gonder' ile e-posta olarak gönder.\n\n4) BELLEK:\n- Geçmiş konuşmaları (Memory) kontrol et. Bir IP daha önce engellenmişse veya bir talimat verilmişse hatırla. \"Bu IP'yi neden engelledin?\" gibi sorulara bellekten net cevap ver.\n\n5) DİL VE ÜSLUP:\n- Cevapların kısa, net, profesyonel ve tamamen TÜRKÇE olsun. Sonuca odaklan."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -20,7 +20,8 @@
     },
     {
       "parameters": {
-        "options": {}
+        "options": {},
+        "modelName": "models/gemini-2.5-flash"
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
@@ -40,7 +41,7 @@
     {
       "parameters": {
         "sessionIdType": "customKey",
-        "sessionKey": "={{ $json.message.chat.id }}_v3",
+        "sessionKey": "={{ $json.message.chat.id }}_v6",
         "contextWindowLength": 10
       },
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
@@ -54,8 +55,7 @@
     },
     {
       "parameters": {
-        "endpointUrl": "http://127.0.0.1:8000/sse",
-        "serverTransport": "sse",
+        "endpointUrl": "http://127.0.0.1:8000/mcp",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
@@ -157,7 +157,8 @@
         "rule": {
           "interval": [
             {
-              "field": "seconds"
+              "field": "seconds",
+              "secondsInterval": 30
             }
           ]
         }
@@ -275,12 +276,52 @@
       ],
       "id": "33b23540-b592-44fd-883b-5a5fefbc6874",
       "name": "Merge"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -704,
+        340
+      ],
+      "id": "985d254f-c73d-48e7-baf7-e05c338cbffc",
+      "name": "Gunluk Ozet Zamanlayici"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  message: {\n    text: \"Gunluk guvenlik ozeti istegi: veritabani_ozet_getir araciyla son 24 saatin ozetini al ve yoneticiye_mail_gonder ile e-posta gonder.\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        340
+      ],
+      "id": "fb022081-4b7e-43ec-8f07-1a3b97f4ec30",
+      "name": "Ozet Istegi"
     }
   ],
   "connections": {
     "Google Gemini Chat Model": {
       "ai_languageModel": [
-        []
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
       ]
     },
     "Simple Memory": {
@@ -333,17 +374,6 @@
           {
             "node": "Send a text message",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Google Vertex Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "ai_languageModel",
             "index": 0
           }
         ]
@@ -420,6 +450,28 @@
           }
         ]
       ]
+    },
+    "Gunluk Ozet Zamanlayici": {
+      "main": [
+        [
+          {
+            "node": "Ozet Istegi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ozet Istegi": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -428,5 +480,6 @@
     "binaryMode": "separate",
     "timeSavedMode": "fixed",
     "callerPolicy": "workflowsFromSameOwner"
-  }
+  },
+  "pinData": {}
 }
