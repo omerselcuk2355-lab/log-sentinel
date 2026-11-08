@@ -2,33 +2,37 @@
 
 Bir otobüs bileti satış uygulamasının **Docker konteyner loglarını** sürekli izleyen, bir **dil modeli (LLM)** ile analiz eden ve şüpheli davranışlara karşı **otomatik savunma** üreten bir SOC (Güvenlik Operasyon Merkezi) otomasyonudur.
 
-Loglar dil modeline, bu proje için geliştirilen özel bir **MCP (Model Context Protocol) sunucusu** aracılığıyla aktarılır. İş akışı (orkestrasyon) **n8n** üzerinde çalışır.
+Loglar dil modeline (**Google Gemini**), bu proje için geliştirilen özel bir **MCP (Model Context Protocol) sunucusu** aracılığıyla aktarılır. İş akışı (orkestrasyon) **n8n** üzerinde çalışır ve uyarılar **Telegram** üzerinden iletilir.
 
 Sistem; **brute force** giriş denemeleri, **SQL Injection / LFI** istekleri ve **anormal istek yoğunluğu** gibi şüpheli davranışları tespit ederek otomatik uyarı ve engelleme üretir.
 
-**Teknolojiler:** n8n · LLM · MCP · Docker · Python · SQLite
+**Teknolojiler:** n8n · LLM (Google Gemini) · MCP · Docker · Telegram · Python · SQLite
 
 ---
 
 ## 🧭 Mimari
 
 ```
-┌──────────────────┐      Docker logs       ┌─────────────────────┐
-│  Bilet Satış     │ ─────────────────────► │  LogSentinel        │
-│  Uygulaması      │                        │  (MCP Sunucusu)     │
-│  (Docker)        │                        │  • log okuma        │
-└──────────────────┘                        │  • IP engelle       │
-         ▲                                   │  • DB kaydet        │
-         │ engelleme (.htaccess)             │  • mail gönder      │
-         │                                   └──────────┬──────────┘
-         │                                              │ MCP
-         │                                   ┌──────────▼──────────┐
-         └───────────────────────────────── │  n8n AI Agent       │
-                                             │  + LLM (analiz)     │
-                                             └─────────────────────┘
+┌──────────────────┐     Docker logs      ┌─────────────────────┐
+│  Bilet Satış     │ ───────────────────► │  LogSentinel        │
+│  Uygulaması      │                      │  (MCP Sunucusu /sse)│
+│  (Docker)        │                      │  • log okuma        │
+└──────────────────┘                      │  • IP engelle       │
+         ▲                                 │  • DB kaydet        │
+         │ engelleme (.htaccess)           │  • mail/uyarı       │
+         │                                 └──────────┬──────────┘
+         │                                            │ MCP (SSE)
+         │   ┌─────────────┐   ┌─────────────┐ ┌──────▼──────────┐
+         └── │  Zamanlayıcı │─► │  n8n AI     │◄┤  Google Gemini  │
+             │  + Telegram │   │  Agent      │ │  (LLM)          │
+             └─────────────┘   └──────┬──────┘ └─────────────────┘
+                                      │ sonuç/uyarı
+                                ┌─────▼──────┐
+                                │  Telegram  │
+                                └────────────┘
 ```
 
-**Akış:** n8n zamanlayıcısı belirli aralıklarla tetiklenir → AI Agent, MCP üzerinden Docker loglarını çeker → LLM logları analiz eder → saldırı tespit edilirse MCP araçlarıyla IP engellenir, SQLite'a kaydedilir ve yöneticiye mail gönderilir.
+**Akış:** İki tetikleyici vardır — (1) **Schedule Trigger** belirli aralıklarla otomatik kontrol başlatır, (2) **Telegram Trigger** yönetici komutlarını karşılar. AI Agent (Google Gemini), **MCP Client (SSE)** üzerinden LogSentinel araçlarını çağırır → Docker loglarını ve sistem durumunu çeker → saldırıyı analiz eder → tespit halinde SQLite'a kaydeder, IP'yi engeller ve sonucu **Telegram** üzerinden raporlar. Otomatik kontrolde engelleme otonom yapılır; Telegram üzerinden konuşurken önce onay istenir. **Simple Memory** ile geçmiş olaylar (ör. daha önce engellenen IP'ler) hatırlanır.
 
 ---
 
@@ -82,14 +86,16 @@ cp .env.example .env
 ```bash
 cd LogSentinel
 python baslat.py
-# MCP Sunucusu: http://localhost:8000/mcp
+# MCP Sunucusu: http://localhost:8000/sse
 ```
 
 ### 4. n8n iş akışını yükleyin
 1. n8n arayüzünde **Import from File** ile `n8n/log_izleme_workflow.json` dosyasını içe aktarın.
-2. **LLM (Sohbet Modeli)** node'una kendi **API anahtarınızı** (Anthropic / OpenAI) n8n **Credentials** üzerinden ekleyin. *(API anahtarı workflow JSON'ında tutulmaz, n8n Credentials'ta saklanır.)*
-3. **MCP: LogSentinel** node'unun endpoint'inin `http://localhost:8000/mcp` olduğundan emin olun.
-4. Workflow'u **aktif** edin.
+2. **MCP Client** node'unun endpoint'inin `http://127.0.0.1:8000/sse` (transport: SSE) olduğundan emin olun.
+3. Kendi **Credentials** bilgilerinizi n8n üzerinden ekleyin (anahtarlar workflow JSON'ında tutulmaz):
+   - **Google Gemini (PaLM) API** — LLM için
+   - **Telegram API** (bot token) — tetikleyici ve mesaj gönderme için
+4. Workflow'u **aktif** edin ve Telegram botunuza mesaj atarak ya da zamanlayıcıyı bekleyerek test edin.
 
 ### 5. (Opsiyonel) Saldırıyı simüle edin
 Sistemi test etmek için saldırı simülatörünü çalıştırın:
