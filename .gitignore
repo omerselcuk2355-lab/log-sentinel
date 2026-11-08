@@ -27,3 +27,6 @@ Thumbs.db
 
 # Audit / runtime loglari
 *.log
+
+# Kisisel notlar (yuklenmez)
+CLAUDE.md
