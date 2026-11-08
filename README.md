@@ -66,6 +66,7 @@ MCP/
 | `docker_loglarini_getir` | Hedef konteynerin son loglarını çeker |
 | `loglari_kurallarla_analiz_et` | Logları deterministik kural motoruyla analiz edip yapılandırılmış bulgu raporu döner |
 | `veritabanina_saldiri_kaydet` | Tespit edilen saldırıyı SQLite'a yazar |
+| `veritabani_ozet_getir` | Son N saatin saldırı özetini (tür dağılımı, top IP) döner — günlük rapor |
 | `saldirgan_ip_engelle` | IP'yi blacklist + `.htaccess` ile engeller |
 | `saldirgan_ip_engelini_kaldir` | IP engelini kaldırır |
 | `yoneticiye_mail_gonder` | Kritik durumda yöneticiye SMTP ile mail atar |

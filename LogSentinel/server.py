@@ -241,6 +241,49 @@ def veritabanina_saldiri_kaydet(ip_adresi: str, saldiri_turu: str, detay: str) -
         return f"VERİTABANI HATASI: {e}"
 
 
+# ----------------- ARAÇ 4.5: VERİTABANI ÖZETİ (günlük rapor) -----------------
+@mcp.tool()
+def veritabani_ozet_getir(saat: int = 24) -> str:
+    """Son N saatteki saldırıların özetini döner (günlük rapor için).
+
+    Toplam saldırı sayısı, türlere göre dağılım ve en çok saldıran IP'leri verir.
+    """
+    try:
+        saat = max(1, min(int(saat), 720))
+    except (TypeError, ValueError):
+        saat = 24
+    try:
+        conn = sqlite3.connect(DB_YOLU)
+        cur = conn.cursor()
+        esik = f"-{saat} hours"
+        toplam = cur.execute(
+            "SELECT COUNT(*) FROM saldiri_kayitlari WHERE tarih >= datetime('now', ?)",
+            (esik,),
+        ).fetchone()[0]
+        if toplam == 0:
+            conn.close()
+            return f"Son {saat} saatte kayıtlı saldırı yok. Sistem sakin."
+        turler = cur.execute(
+            "SELECT saldiri_turu, COUNT(*) c FROM saldiri_kayitlari "
+            "WHERE tarih >= datetime('now', ?) GROUP BY saldiri_turu ORDER BY c DESC",
+            (esik,),
+        ).fetchall()
+        ipler = cur.execute(
+            "SELECT ip_adresi, COUNT(*) c FROM saldiri_kayitlari "
+            "WHERE tarih >= datetime('now', ?) GROUP BY ip_adresi ORDER BY c DESC LIMIT 5",
+            (esik,),
+        ).fetchall()
+        conn.close()
+        satirlar = [f"📊 SON {saat} SAAT ÖZETİ — Toplam {toplam} saldırı kaydı", "", "Türlere göre:"]
+        satirlar += [f"  • {t}: {c}" for t, c in turler]
+        satirlar += ["", "En çok saldıran IP'ler:"]
+        satirlar += [f"  • {ip}: {c} kayıt" for ip, c in ipler]
+        return "\n".join(satirlar)
+    except Exception as e:
+        logger.error("Ozet hatasi: %s", e)
+        return f"VERİTABANI HATASI: {e}"
+
+
 # ----------------- ARAÇ 5: YÖNETİCİYE MAİL -----------------
 @mcp.tool()
 def yoneticiye_mail_gonder(konu: str, mesaj_detayi: str) -> str:
