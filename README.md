@@ -17,13 +17,13 @@ Sistem; **brute force** giriş denemeleri, **SQL Injection / LFI** istekleri ve 
 ```
 ┌──────────────────┐     Docker logs      ┌─────────────────────┐
 │  Bilet Satış     │ ───────────────────► │  LogSentinel        │
-│  Uygulaması      │                      │  (MCP Sunucusu /sse)│
+│  Uygulaması      │                      │  (MCP Sunucusu /mcp)│
 │  (Docker)        │                      │  • log okuma        │
 └──────────────────┘                      │  • IP engelle       │
          ▲                                 │  • DB kaydet        │
          │ engelleme (.htaccess)           │  • mail/uyarı       │
          │                                 └──────────┬──────────┘
-         │                                            │ MCP (SSE)
+         │                                            │ MCP
          │   ┌─────────────┐   ┌─────────────┐ ┌──────▼──────────┐
          └── │  Zamanlayıcı │─► │  n8n AI     │◄┤  Google Gemini  │
              │  + Telegram │   │  Agent      │ │  (LLM)          │
@@ -34,7 +34,7 @@ Sistem; **brute force** giriş denemeleri, **SQL Injection / LFI** istekleri ve 
                                 └────────────┘
 ```
 
-**Akış:** İki tetikleyici vardır — (1) **Schedule Trigger** belirli aralıklarla otomatik kontrol başlatır, (2) **Telegram Trigger** yönetici komutlarını karşılar. AI Agent (Google Gemini), **MCP Client (SSE)** üzerinden LogSentinel araçlarını çağırır → Docker loglarını ve sistem durumunu çeker → saldırıyı analiz eder → tespit halinde SQLite'a kaydeder, IP'yi engeller ve sonucu **Telegram** üzerinden raporlar. Otomatik kontrolde engelleme otonom yapılır; Telegram üzerinden konuşurken önce onay istenir. **Simple Memory** ile geçmiş olaylar (ör. daha önce engellenen IP'ler) hatırlanır.
+**Akış:** İki tetikleyici vardır — (1) **Schedule Trigger** belirli aralıklarla otomatik kontrol başlatır, (2) **Telegram Trigger** yönetici komutlarını karşılar. AI Agent (Google Gemini), **MCP Client** üzerinden LogSentinel araçlarını çağırır → Docker loglarını ve sistem durumunu çeker → saldırıyı analiz eder → tespit halinde SQLite'a kaydeder, IP'yi engeller ve sonucu **Telegram** üzerinden raporlar. Otomatik kontrolde engelleme otonom yapılır; Telegram üzerinden konuşurken önce onay istenir. **Simple Memory** ile geçmiş olaylar (ör. daha önce engellenen IP'ler) hatırlanır.
 
 ---
 
@@ -45,13 +45,13 @@ MCP/
 ├── LogSentinel/            # MCP sunucusu (savunma tarafı)
 │   ├── server.py           # MCP araçları (log, analiz, engelle, DB, mail, sistem)
 │   ├── detector.py         # Deterministik kural tabanlı tespit motoru
-│   └── baslat.py           # Sunucuyu 0.0.0.0:8000'de (SSE) başlatır
+│   └── baslat.py           # Sunucuyu 0.0.0.0:8000'de (streamable-http) başlatır
 ├── Attacker/
 │   └── attacker.py         # Saldırı simülatörü (brute/sqli/lfi/xss/burst modları)
 ├── tests/
 │   └── test_detector.py    # Tespit motoru birim testleri (pytest)
 ├── n8n/
-│   └── log_izleme_workflow.json   # n8n iş akışı (14 node)
+│   └── log_izleme_workflow.json   # n8n iş akışı (16 node)
 ├── .env.example            # Ortam değişkenleri şablonu
 ├── requirements.txt
 └── README.md
@@ -93,12 +93,12 @@ cp .env.example .env
 ```bash
 cd LogSentinel
 python baslat.py
-# MCP Sunucusu: http://localhost:8000/sse
+# MCP Sunucusu: http://localhost:8000/mcp
 ```
 
 ### 4. n8n iş akışını yükleyin
 1. n8n arayüzünde **Import from File** ile `n8n/log_izleme_workflow.json` dosyasını içe aktarın.
-2. **MCP Client** node'unun endpoint'inin `http://127.0.0.1:8000/sse` (transport: SSE) olduğundan emin olun.
+2. **MCP Client** node'unun endpoint'inin `http://127.0.0.1:8000/mcp` (transport: Streamable HTTP) olduğundan emin olun.
 3. Kendi **Credentials** bilgilerinizi n8n üzerinden ekleyin (anahtarlar workflow JSON'ında tutulmaz):
    - **Google Gemini (PaLM) API** — LLM için
    - **Telegram API** (bot token) — tetikleyici ve mesaj gönderme için
