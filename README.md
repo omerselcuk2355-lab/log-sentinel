@@ -6,7 +6,9 @@ Loglar dil modeline (**Google Gemini**), bu proje için geliştirilen özel bir 
 
 Sistem; **brute force** giriş denemeleri, **SQL Injection / LFI** istekleri ve **anormal istek yoğunluğu** gibi şüpheli davranışları tespit ederek otomatik uyarı ve engelleme üretir.
 
-**Teknolojiler:** n8n · LLM (Google Gemini) · MCP · Docker · Telegram · Python · SQLite
+> **Tasarım kararı — Hibrit tespit (defense in depth):** Tespit yalnızca LLM'e bırakılmaz. Önce **deterministik bir kural katmanı** (`detector.py`) imza (SQLi/LFI/XSS) ve sayaç (brute-force/yoğunluk) tabanlı hızlı/ucuz tespit yapar; LLM bu yapılandırılmış bulguları **yorumlar ve aksiyon alır**, tek başına karar verici değildir. Bu; maliyeti, gecikmeyi, non-determinizmi ve halüsinasyon riskini azaltır.
+
+**Teknolojiler:** n8n · LLM (Google Gemini) · MCP · Docker · Telegram · Python · SQLite · pytest
 
 ---
 
@@ -41,12 +43,15 @@ Sistem; **brute force** giriş denemeleri, **SQL Injection / LFI** istekleri ve 
 ```
 MCP/
 ├── LogSentinel/            # MCP sunucusu (savunma tarafı)
-│   ├── server.py           # 6 MCP aracı tanımlı
-│   └── baslat.py           # Sunucuyu 0.0.0.0:8000'de başlatır
+│   ├── server.py           # MCP araçları (log, analiz, engelle, DB, mail, sistem)
+│   ├── detector.py         # Deterministik kural tabanlı tespit motoru
+│   └── baslat.py           # Sunucuyu 0.0.0.0:8000'de (SSE) başlatır
 ├── Attacker/
-│   └── attacker.py         # Test için saldırı simülatörü (brute force + SQLi)
+│   └── attacker.py         # Saldırı simülatörü (brute/sqli/lfi/xss/burst modları)
+├── tests/
+│   └── test_detector.py    # Tespit motoru birim testleri (pytest)
 ├── n8n/
-│   └── log_izleme_workflow.json   # n8n'e import edilecek örnek iş akışı
+│   └── log_izleme_workflow.json   # n8n iş akışı (14 node)
 ├── .env.example            # Ortam değişkenleri şablonu
 ├── requirements.txt
 └── README.md
@@ -59,6 +64,7 @@ MCP/
 | Araç | Görevi |
 |------|--------|
 | `docker_loglarini_getir` | Hedef konteynerin son loglarını çeker |
+| `loglari_kurallarla_analiz_et` | Logları deterministik kural motoruyla analiz edip yapılandırılmış bulgu raporu döner |
 | `veritabanina_saldiri_kaydet` | Tespit edilen saldırıyı SQLite'a yazar |
 | `saldirgan_ip_engelle` | IP'yi blacklist + `.htaccess` ile engeller |
 | `saldirgan_ip_engelini_kaldir` | IP engelini kaldırır |
@@ -98,11 +104,23 @@ python baslat.py
 4. Workflow'u **aktif** edin ve Telegram botunuza mesaj atarak ya da zamanlayıcıyı bekleyerek test edin.
 
 ### 5. (Opsiyonel) Saldırıyı simüle edin
-Sistemi test etmek için saldırı simülatörünü çalıştırın:
+Sistemi test etmek için saldırı simülatörünü çalıştırın (yalnızca kendi yerel ortamınızda):
 ```bash
-python Attacker/attacker.py
+python Attacker/attacker.py --mode all           # tüm saldırı türleri
+python Attacker/attacker.py --mode brute --rate 20   # brute force
+python Attacker/attacker.py --mode burst          # anormal istek yoğunluğu
 ```
-Birkaç saniye içinde n8n akışı logları çeker, LLM saldırıyı tespit eder ve savunma araçları devreye girer.
+Birkaç saniye içinde n8n akışı logları çeker, deterministik katman + LLM saldırıyı tespit eder ve savunma araçları devreye girer.
+
+---
+
+## 🧪 Testler
+
+Deterministik tespit katmanı (`detector.py`) birim testlerle doğrulanır:
+```bash
+pytest -q
+```
+Testler parser, SQLi/LFI/XSS imzaları ve brute-force/yoğunluk eşiklerini kapsar; harici servis veya Docker gerektirmez.
 
 ---
 

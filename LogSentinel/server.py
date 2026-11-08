@@ -12,6 +12,8 @@ from datetime import datetime
 import psutil
 from mcp.server.fastmcp import FastMCP
 
+from detector import analiz_et
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -122,6 +124,23 @@ def docker_loglarini_getir(konteyner_adi: str = None, satir_sayisi: int = 100) -
         return "HATA: Docker log komutu zaman asimina ugradi."
     except Exception as h:
         return f"KRİTİK HATA: {h}"
+
+
+# ----------------- ARAÇ 1.5: KURAL TABANLI ANALİZ (deterministik) -----------------
+@mcp.tool()
+def loglari_kurallarla_analiz_et(konteyner_adi: str = None, satir_sayisi: int = 300) -> str:
+    """Docker loglarını deterministik kural motoruyla analiz eder.
+
+    LLM'den ÖNCE çalışır: brute-force, SQL Injection, LFI ve anormal istek
+    yoğunluğunu imza + sayaç tabanlı yakalar. Yapılandırılmış bir bulgu
+    raporu döner; LLM bu raporu yorumlar (tek başına karar vermez).
+    """
+    ham = docker_loglarini_getir(konteyner_adi, satir_sayisi)
+    if ham.startswith(("HATA", "KRİTİK HATA")):
+        return ham
+    sonuc = analiz_et(ham)
+    logger.info("Kural analizi: %d satir, %d bulgu", sonuc.toplam_satir, len(sonuc.bulgular))
+    return sonuc.rapor()
 
 
 # ----------------- ARAÇ 2: SALDIRGAN ENGELLEME -----------------
